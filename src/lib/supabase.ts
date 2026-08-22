@@ -3,10 +3,8 @@ import { createClient, type User } from "@supabase/supabase-js";
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-// This branch is a frontend-only demo copy. When Supabase credentials are
-// unavailable, use a small in-memory mock so the UI can be viewed without a
-// database, authentication, or Edge Functions. The production branch is
-// unchanged.
+// Frontend-only demo mode: when Supabase credentials are unavailable, the UI
+// runs entirely against in-memory mock data. Production behavior is unchanged.
 const DEMO_MODE = !url || !anonKey;
 
 const demoUser = {
@@ -22,11 +20,11 @@ const demoProfile: Profile = {
   id: demoUser.id,
   allergies: [],
   lifestyle: [],
-  cuisines: ["Indian"],
-  adults: 2,
-  children: 1,
-  goals: ["Healthy eating"],
-  onboarded: true,
+  cuisines: [],
+  adults: 1,
+  children: 0,
+  goals: [],
+  onboarded: false,
 };
 
 let demoPantry: PantryItem[] = [
@@ -50,6 +48,9 @@ function demoQuery(table: string) {
     order: (_column: string, _opts?: unknown) => chain,
     eq: (column: string, value: unknown) => {
       filtered = filtered.filter((r) => r[column] === value);
+      if (table === "pantry_items" && column === "id") {
+        demoPantry = demoPantry.filter((r) => r.id !== value);
+      }
       return chain;
     },
     limit: (n: number) => {
@@ -75,20 +76,12 @@ function demoQuery(table: string) {
     },
     upsert: (value: any) => {
       if (table === "profiles") Object.assign(demoProfile, value);
-      filtered = [value];
+      filtered = [demoProfile];
       return chain;
     },
     delete: () => chain,
   };
 
-  const originalEq = chain.eq;
-  chain.eq = (column: string, value: unknown) => {
-    filtered = filtered.filter((r) => r[column] === value);
-    if (table === "pantry_items" && column === "id") {
-      demoPantry = demoPantry.filter((r) => r.id !== value);
-    }
-    return chain;
-  };
   return chain;
 }
 

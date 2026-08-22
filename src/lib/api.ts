@@ -1,7 +1,14 @@
 import { supabase } from "./supabase";
-import type { FlexSession, PantryItem, Profile, Recipe, PantryFlag } from "./supabase";
+import type { FlexSession, PantryItem, Profile, Recipe, PantryFlag, CustomOption } from "./supabase";
 
 const DEMO_MODE = !import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const DEMO_OPTIONS: Record<string, string[]> = {
+  allergy: ["peanuts", "tree nuts", "dairy", "eggs", "gluten", "soy", "shellfish"],
+  lifestyle: ["vegetarian", "vegan", "pescatarian", "omnivore", "halal", "jain"],
+  cuisine: ["Indian", "Italian", "Mexican", "Chinese", "Thai", "Mediterranean", "American"],
+  goal: ["Healthy eating", "Save time", "Reduce food waste", "Budget-friendly", "High protein", "Family-friendly"],
+};
 
 export async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
@@ -15,13 +22,31 @@ export async function upsertProfile(profile: Profile): Promise<Profile> {
   return data as Profile;
 }
 
-export async function fetchOptions(category: string) {
+export async function fetchOptions(category: string): Promise<CustomOption[]> {
+  if (DEMO_MODE) {
+    return (DEMO_OPTIONS[category] ?? []).map((value, index) => ({
+      id: `demo-${category}-${index}`,
+      category: category as CustomOption["category"],
+      value: value.toLowerCase(),
+      created_by: null,
+      created_at: new Date().toISOString(),
+    }));
+  }
   const { data, error } = await supabase.from("custom_options").select("id, category, value, created_by, created_at").eq("category", category).order("value", { ascending: true });
   if (error) throw error;
   return data ?? [];
 }
 
 export async function addCustomOption(category: string, value: string) {
+  if (DEMO_MODE) {
+    return {
+      id: `demo-custom-${crypto.randomUUID()}`,
+      category,
+      value: value.trim().toLowerCase(),
+      created_by: null,
+      created_at: new Date().toISOString(),
+    } as CustomOption;
+  }
   const { data, error } = await supabase.from("custom_options").insert({ category, value: value.trim().toLowerCase() }).select("id, category, value, created_by, created_at").maybeSingle();
   if (error && error.code !== "23505") throw error;
   return data;
