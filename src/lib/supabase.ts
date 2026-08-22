@@ -1,20 +1,118 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type User } from "@supabase/supabase-js";
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-if (!url || !anonKey) {
-  // eslint-disable-next-line no-console
-  console.warn("Supabase env vars missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+// This branch is a frontend-only demo copy. When Supabase credentials are
+// unavailable, use a small in-memory mock so the UI can be viewed without a
+// database, authentication, or Edge Functions. The production branch is
+// unchanged.
+const DEMO_MODE = !url || !anonKey;
+
+const demoUser = {
+  id: "demo-user-001",
+  email: "demo@comfymeal.ai",
+  app_metadata: {},
+  user_metadata: { name: "Demo Chef" },
+  aud: "authenticated",
+  created_at: new Date().toISOString(),
+} as User;
+
+const demoProfile: Profile = {
+  id: demoUser.id,
+  allergies: [],
+  lifestyle: [],
+  cuisines: ["Indian"],
+  adults: 2,
+  children: 1,
+  goals: ["Healthy eating"],
+  onboarded: true,
+};
+
+let demoPantry: PantryItem[] = [
+  { id: "p1", user_id: demoUser.id, name: "rice", logged_at: new Date().toISOString() },
+  { id: "p2", user_id: demoUser.id, name: "chicken", logged_at: new Date().toISOString() },
+  { id: "p3", user_id: demoUser.id, name: "spinach", logged_at: new Date().toISOString() },
+];
+let demoSessions: FlexSession[] = [];
+let demoSavedRecipes: SavedRecipe[] = [];
+
+function demoResult(data: unknown, error: unknown = null) {
+  return Promise.resolve({ data, error });
 }
 
-export const supabase = createClient(url ?? "", anonKey ?? "", {
+function demoQuery(table: string) {
+  let rows: any[] = table === "profiles" ? [demoProfile] : table === "pantry_items" ? demoPantry : table === "flex_sessions" ? demoSessions : table === "saved_recipes" ? demoSavedRecipes : [];
+  let filtered = [...rows];
+
+  const chain: any = {
+    select: () => chain,
+    order: (_column: string, _opts?: unknown) => chain,
+    eq: (column: string, value: unknown) => {
+      filtered = filtered.filter((r) => r[column] === value);
+      return chain;
+    },
+    limit: (n: number) => {
+      filtered = filtered.slice(0, n);
+      return chain;
+    },
+    maybeSingle: () => demoResult(filtered[0] ?? null),
+    single: () => demoResult(filtered[0] ?? null),
+    insert: (value: any) => {
+      const values = Array.isArray(value) ? value : [value];
+      const created = values.map((v) => ({
+        id: v.id ?? crypto.randomUUID(),
+        user_id: v.user_id ?? demoUser.id,
+        logged_at: v.logged_at ?? new Date().toISOString(),
+        created_at: v.created_at ?? new Date().toISOString(),
+        ...v,
+      }));
+      if (table === "pantry_items") demoPantry = [...created, ...demoPantry];
+      if (table === "flex_sessions") demoSessions = [...created, ...demoSessions];
+      if (table === "saved_recipes") demoSavedRecipes = [...created, ...demoSavedRecipes];
+      filtered = created;
+      return chain;
+    },
+    upsert: (value: any) => {
+      if (table === "profiles") Object.assign(demoProfile, value);
+      filtered = [value];
+      return chain;
+    },
+    delete: () => chain,
+  };
+
+  const originalEq = chain.eq;
+  chain.eq = (column: string, value: unknown) => {
+    filtered = filtered.filter((r) => r[column] === value);
+    if (table === "pantry_items" && column === "id") {
+      demoPantry = demoPantry.filter((r) => r.id !== value);
+    }
+    return chain;
+  };
+  return chain;
+}
+
+const mockSupabase: any = {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
+    getSession: () => Promise.resolve({ data: { session: { user: demoUser } }, error: null }),
+    onAuthStateChange: (callback: (event: string, session: any) => void) => {
+      queueMicrotask(() => callback("SIGNED_IN", { user: demoUser }));
+      return { data: { subscription: { unsubscribe: () => undefined } } };
+    },
+    signOut: () => Promise.resolve({ error: null }),
   },
-});
+  from: (table: string) => demoQuery(table),
+};
+
+export const supabase = DEMO_MODE
+  ? mockSupabase
+  : createClient(url!, anonKey!, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
 
 export type OptionCategory = "allergy" | "lifestyle" | "cuisine" | "goal";
 
