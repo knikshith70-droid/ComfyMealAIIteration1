@@ -6,21 +6,21 @@ import { Logo } from "./components/Logo";
 import { Loader2 } from "lucide-react";
 
 function Shell() {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, refreshProfile } = useAuth();
 
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <Logo className="h-12 w-12 animate-pulse" />
         <div className="flex items-center gap-2 muted">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading FlexiMeal…
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading ComfyMeal AI…
         </div>
       </div>
     );
   }
 
   if (!user) return <AuthScreen />;
-  if (!profile || !profile.onboarded) return <Onboarding onDone={() => {}} />;
+  if (!profile || !profile.onboarded) return <Onboarding onDone={refreshProfile} />;
   return <FlexEngine profile={profile} />;
 }
 
